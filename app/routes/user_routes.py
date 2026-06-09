@@ -1,69 +1,57 @@
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Response, status, Query
 from typing import List, Optional
-from app.schemas.user_schema import UserCreate, UserResponse
+from app.schemas.user_schema import UserCreate, UserResponse, UserUpdatePartial
+from app.services.user_service import UserService
+from app.dependencies.user_dependencies import get_user_or_404, verificar_correo_duplicado
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
-# Nuestra "Base de datos" simulada (Con 3 usuarios iniciales)
-db_users = [
-    {"id": 1, "name": "Samuel Moreno", "email": "samuel@mail.com", "role": "admin", "is_active": True},
-    {"id": 2, "name": "Andres Felipe", "email": "andres@mail.com", "role": "support", "is_active": True},
-    {"id": 3, "name": "Carlos Gomez", "email": "carlos@mail.com", "role": "user", "is_active": False}
-]
-
-# Función para meter las dos firmas ocultas (Headers) que pide el taller
+# Tu función original de firmas con la actualización a la versión 2.0
 def agregar_firmas_ocultas(response: Response):
     response.headers["X-App-Name"] = "device_systems"
-    response.headers["X-API-Version"] = "1.0"
+    response.headers["X-API-Version"] = "2.0"
 
-# POST: Registrar Usuario
-@router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def crear_usuario(user_in: UserCreate, response: Response):
-    agregar_firmas_ocultas(response)
-    
-    # Revisar que el correo no esté repetido
-    for usuario in db_users:
-        if usuario["email"] == user_in.email:
-            raise HTTPException(status_code=400, detail="Ese correo ya existe, intenta con otro.")
-    
-    # Crear un ID nuevo sumándole 1 al último de la lista
-    nuevo_id = db_users[-1]["id"] + 1 if db_users else 1
-    
-    # Armar el usuario nuevo juntando el ID con los datos que nos mandaron
-    nuevo_usuario = {"id": nuevo_id, **user_in.model_dump()}
-    db_users.append(nuevo_usuario) # Guardarlo en la lista
-    
-    return nuevo_usuario
-
-# GET: Listar todo y Filtrar
-@router.get("/", response_model=List[UserResponse])
+# GET: Listar todo y filtrar (Usa el servicio)
+@router.get("/", response_model=List[UserResponse], status_code=status.HTTP_200_OK, summary="Listar y filtrar usuarios")
 def obtener_usuarios(
     response: Response,
-    role: Optional[str] = Query(None),       # Filtro opcional para buscar por rol (?role=...)
-    is_active: Optional[bool] = Query(None)  # Filtro opcional para buscar por activo (?is_active=...)
+    role: Optional[str] = Query(None),
+    is_active: Optional[bool] = Query(None)
 ):
     agregar_firmas_ocultas(response)
-    resultado = db_users
-    
-    # Si el usuario escribe un rol en la URL, filtramos la lista
-    if role is not None:
-        resultado = [u for u in resultado if u["role"] == role.lower()]
-        
-    # Si el usuario escribe un estado en la URL, filtramos la lista
-    if is_active is not None:
-        resultado = [u for u in resultado if u["is_active"] == is_active]
-        
-    return resultado
+    return UserService.listar_usuarios(role, is_active)
 
-# GET: Buscar por un ID específico
-@router.get("/{user_id}", response_model=UserResponse)
-def buscar_por_id(user_id: int, response: Response):
+# GET: Buscar por ID (Usa la inyección get_user_or_404)
+@router.get("/{user_id}", response_model=UserResponse, status_code=status.HTTP_200_OK, summary="Buscar usuario por ID")
+def buscar_por_id(response: Response, usuario: dict = Depends(get_user_or_404)):
     agregar_firmas_ocultas(response)
-    
-    # Buscar el ID en la lista
-    for usuario in db_users:
-        if usuario["id"] == user_id:
-            return usuario
-            
-    # Si termina el ciclo y no encontró nada, sacara el error 404
-    raise HTTPException(status_code=404, detail="El usuario que buscas no existe.")
+    return usuario
+
+# POST: Registrar Usuario (Inyecta la validación del correo)
+@router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED, summary="Registrar un nuevo usuario")
+def crear_usuario(user_in: UserCreate, response: Response):
+    agregar_firmas_ocultas(response)
+    verificar_correo_duplicado(user_in.email)
+    return UserService.crear_usuario(user_in)
+
+# NUEVO PUT: Actualización completa
+@router.put("/{user_id}", response_model=UserResponse, status_code=status.HTTP_200_OK, summary="Actualización completa de un usuario")
+def actualizar_usuario_completo(user_in: UserCreate, response: Response, usuario: dict = Depends(get_user_or_404)):
+    agregar_firmas_ocultas(response)
+    verificar_correo_duplicado(user_in.email, excluir_id=usuario["id"])
+    return UserService.actualizar_completo(usuario, user_in)
+
+# NUEVO PATCH: Actualización parcial
+@router.patch("/{user_id}", response_model=UserResponse, status_code=status.HTTP_200_OK, summary="Actualización parcial de un usuario")
+def actualizar_usuario_parcial(user_in: UserUpdatePartial, response: Response, usuario: dict = Depends(get_user_or_404)):
+    agregar_firmas_ocultas(response)
+    if user_in.email:
+        verificar_correo_duplicado(user_in.email, excluir_id=usuario["id"])
+    return UserService.actualizar_parcial(usuario, user_in)
+
+# NUEVO DELETE: Eliminar usuario (Retorna 204 No Content como pide la Fase 4)
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Eliminar un usuario del sistema")
+def eliminar_usuario(response: Response, usuario: dict = Depends(get_user_or_404)):
+    agregar_firmas_ocultas(response)
+    UserService.eliminar_usuario(usuario)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

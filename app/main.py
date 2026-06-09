@@ -1,17 +1,17 @@
 from fastapi import FastAPI
 from app.routes import user_routes
 
-# Inicializamos la aplicación de FastAPI
 app = FastAPI(
-    title="device_systems",
-    description="Proyecto para gestionar usuarios del sistema",
-    version="1.0"
+    title="device_systems API",
+    description="API REST intermedia para la gestión avanzada del recurso usuarios, implementando patrones de arquitectura limpia, manejo de excepciones y Dependency Injection.",
+    version="2.0.0",
+    contact={
+        "name": "Samuel Moreno"
+    }
 )
 
-# Conectamos las rutas de usuarios que escribimos en el otro archivo
 app.include_router(user_routes.router)
 
-# Pagina de bienvenida simple al entrar al link principal
-@app.get("/", tags=["Inicio"])
+@app.get("/", tags=["Inicio"], include_in_schema=False)
 def inicio():
-    return {"mensaje": "Servidor corriendo. Entra a /docs para ver las pruebas."}
+    return {"mensaje": "Servidor de device_systems V2 activo. Dirígete a /docs"}

@@ -1,20 +1,28 @@
 from pydantic import BaseModel, Field, EmailStr
-from typing import Literal
+from typing import Literal, Optional
 
-# Las reglas básicas que todo usuario debe cumplir
+# Tus reglas básicas originales (Se quedan tal cual)
 class UserBase(BaseModel):
-    name: str = Field(..., min_length=3)  # Nombre obligatorio y de mínimo 3 letras
-    email: EmailStr                      # Correo con formato válido (que tenga @ y .com)
-    role: Literal["admin", "support", "user"] # Solo se permiten estos 3 roles exactos
-    is_active: bool = True               # Si no nos dicen nada, el usuario entra activo
+    name: str = Field(..., min_length=3)
+    email: EmailStr
+    role: Literal["admin", "support", "user"]
+    is_active: bool = True
 
-# El molde para cuando vamos a CREAR un usuario (POST)
+# Molde para CREAR (POST) y para actualización COMPLETA (PUT)
 class UserCreate(UserBase):
-    pass  # Usa las mismas reglas de arriba sin cambiar nada
+    pass
 
-# El molde para cuando la API RESPONDE con los datos (GET y POST)
+# NUEVO CAMBIO EV08: Molde para actualización PARCIAL (PATCH)
+# Todos los campos se vuelven opcionales usando Optional
+class UserUpdatePartial(BaseModel):
+    name: Optional[str] = Field(None, min_length=3)
+    email: Optional[EmailStr] = None
+    role: Optional[Literal["admin", "support", "user"]] = None
+    is_active: Optional[bool] = None
+
+# Tu molde de RESPUESTA original (Se queda tal cual)
 class UserResponse(UserBase):
-    id: int  # Le sumamos el ID que le asigna el sistema
+    id: int
 
     class Config:
-        from_attributes = True  # Para que FastAPI no se enrede leyendo los datos
+        from_attributes = True
