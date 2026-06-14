@@ -1,0 +1,9 @@
+# Entorno virtual (Nunca se sube a GitHub)
+venv/
+
+# Archivos ocultos de compilación de Python
+__pycache__/
+*.pyc
+
+# Configuración de Visual Studio Code
+.vscode/device_systems.db
