@@ -6,4 +6,4 @@ __pycache__/
 *.pyc
 
 # Configuración de Visual Studio Code
-.vscode/
+.vscode/device_systems.db
