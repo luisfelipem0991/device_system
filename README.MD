@@ -268,3 +268,4 @@ Migrar de listas en memoria a una base de datos real con **SQLAlchemy** fue un c
 La inyección de la sesión de base de datos con `Depends(get_db)` mantiene el código limpio y desacoplado: cada endpoint recibe su sesión, la usa y la cierra automáticamente gracias al generador `yield`. Esto evita fugas de conexión y hace el código más seguro.
 
 La adición del campo `created_at` con `default=datetime.utcnow` también fue un buen ejemplo de cómo el modelo ORM puede manejar lógica de negocio básica sin intervención del desarrollador en cada petición.
+se añadio link del video https://www.loom.com/share/581dde6e282f45e2bffb2cca87baf328
