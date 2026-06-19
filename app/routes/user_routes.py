@@ -3,7 +3,9 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from app.schemas.user_schema import UserCreate, UserUpdate, UserPatch, UserResponse
+from app.schemas.loan_schema import LoanDetailResponse
 from app.services.user_service import UserService
+from app.services.loan_service import LoanService
 from app.database.connection import get_db
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -91,3 +93,17 @@ def eliminar_usuario(user_id: int, response: Response, db: Session = Depends(get
     agregar_firmas(response)
     UserService.eliminar_usuario(db, user_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# GET /users/{user_id}/loans — Préstamos de un usuario (JOIN)
+@router.get(
+    "/{user_id}/loans",
+    response_model=List[LoanDetailResponse],
+    status_code=status.HTTP_200_OK,
+    summary="Consultar préstamos de un usuario",
+    description="Retorna todos los préstamos asociados a un usuario, incluyendo datos del dispositivo.",
+    response_description="Lista de préstamos del usuario con información relacionada."
+)
+def prestamos_del_usuario(user_id: int, response: Response, db: Session = Depends(get_db)):
+    agregar_firmas(response)
+    return LoanService.prestamos_por_usuario(db, user_id)
