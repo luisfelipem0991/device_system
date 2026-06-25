@@ -7,6 +7,8 @@ from app.schemas.loan_schema import LoanDetailResponse
 from app.services.device_service import DeviceService
 from app.services.loan_service import LoanService
 from app.database.connection import get_db
+from app.models.user_model import User
+from app.dependencies.auth_dependency import get_current_active_user, require_admin, require_admin_or_support
 
 router = APIRouter(prefix="/devices", tags=["Devices"])
 
@@ -16,7 +18,7 @@ router = APIRouter(prefix="/devices", tags=["Devices"])
     response_model=List[DeviceResponse],
     status_code=status.HTTP_200_OK,
     summary="Listar y filtrar dispositivos",
-    description="Retorna dispositivos. Soporta filtros por `device_type`, `is_available`, `brand` y búsqueda libre con `search`.",
+    description="Retorna dispositivos. Soporta filtros por `device_type`, `is_available`, `brand` y búsqueda libre con `search`. Requiere usuario autenticado.",
     response_description="Lista de dispositivos que cumplen los filtros."
 )
 def obtener_dispositivos(
@@ -24,7 +26,8 @@ def obtener_dispositivos(
     is_available: Optional[bool] = Query(None, description="Filtrar por disponibilidad"),
     brand: Optional[str] = Query(None, description="Filtrar por marca (búsqueda parcial)"),
     search: Optional[str] = Query(None, description="Búsqueda libre por nombre o número de serie"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
 ):
     return DeviceService.listar_dispositivos(db, device_type, is_available, brand, search)
 
@@ -34,9 +37,14 @@ def obtener_dispositivos(
     response_model=DeviceResponse,
     status_code=status.HTTP_200_OK,
     summary="Buscar dispositivo por ID",
+    description="Requiere usuario autenticado.",
     response_description="Dispositivo encontrado."
 )
-def buscar_por_id(device_id: int, db: Session = Depends(get_db)):
+def buscar_por_id(
+    device_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
     return DeviceService.obtener_por_id(db, device_id)
 
 
@@ -45,9 +53,14 @@ def buscar_por_id(device_id: int, db: Session = Depends(get_db)):
     response_model=DeviceResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Registrar un nuevo dispositivo",
+    description="Requiere rol admin o support.",
     response_description="Dispositivo creado correctamente."
 )
-def crear_dispositivo(device_in: DeviceCreate, db: Session = Depends(get_db)):
+def crear_dispositivo(
+    device_in: DeviceCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_support)
+):
     return DeviceService.crear_dispositivo(db, device_in)
 
 
@@ -55,9 +68,15 @@ def crear_dispositivo(device_in: DeviceCreate, db: Session = Depends(get_db)):
     "/{device_id}",
     response_model=DeviceResponse,
     status_code=status.HTTP_200_OK,
-    summary="Actualización completa de un dispositivo"
+    summary="Actualización completa de un dispositivo",
+    description="Requiere rol admin o support."
 )
-def actualizar_completo(device_id: int, device_in: DeviceUpdate, db: Session = Depends(get_db)):
+def actualizar_completo(
+    device_id: int,
+    device_in: DeviceUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_support)
+):
     return DeviceService.actualizar_completo(db, device_id, device_in)
 
 
@@ -65,18 +84,29 @@ def actualizar_completo(device_id: int, device_in: DeviceUpdate, db: Session = D
     "/{device_id}",
     response_model=DeviceResponse,
     status_code=status.HTTP_200_OK,
-    summary="Actualización parcial de un dispositivo"
+    summary="Actualización parcial de un dispositivo",
+    description="Requiere rol admin o support."
 )
-def actualizar_parcial(device_id: int, device_in: DevicePatch, db: Session = Depends(get_db)):
+def actualizar_parcial(
+    device_id: int,
+    device_in: DevicePatch,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin_or_support)
+):
     return DeviceService.actualizar_parcial(db, device_id, device_in)
 
 
 @router.delete(
     "/{device_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Eliminar un dispositivo del sistema"
+    summary="Eliminar un dispositivo del sistema",
+    description="Requiere rol admin."
 )
-def eliminar_dispositivo(device_id: int, db: Session = Depends(get_db)):
+def eliminar_dispositivo(
+    device_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
     DeviceService.eliminar_dispositivo(db, device_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -87,8 +117,12 @@ def eliminar_dispositivo(device_id: int, db: Session = Depends(get_db)):
     response_model=List[LoanDetailResponse],
     status_code=status.HTTP_200_OK,
     summary="Consultar historial de préstamos de un dispositivo",
-    description="Retorna todos los préstamos históricos asociados a un dispositivo, incluyendo datos del usuario.",
+    description="Retorna todos los préstamos históricos asociados a un dispositivo, incluyendo datos del usuario. Requiere usuario autenticado.",
     response_description="Lista de préstamos del dispositivo con información relacionada."
 )
-def prestamos_del_dispositivo(device_id: int, db: Session = Depends(get_db)):
+def prestamos_del_dispositivo(
+    device_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
     return LoanService.prestamos_por_dispositivo(db, device_id)
