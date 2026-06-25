@@ -1,6 +1,7 @@
  device_systems_security
 # device_systems — Evidencias v5.0
 ### Seguridad, Autenticación OAuth2/JWT, Middleware, CORS y Rate Limiting
+video https://www.loom.com/share/fcd163c491944575b6bfc05596b32428
 
 Este documento contiene la evidencia funcional de la capa de seguridad implementada sobre **device_systems**: autenticación con OAuth2 y JWT, hash de contraseñas con passlib, autorización por roles, middleware personalizado, configuración de CORS y rate limiting con slowapi.
 
