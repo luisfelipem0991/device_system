@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import asc
 from fastapi import HTTPException, status
 from app.models.user_model import User
-from app.schemas.user_schema import UserCreate, UserUpdate, UserPatch
+from app.schemas.user_schema import UserUpdate, UserPatch
 
 
 class UserService:
@@ -63,16 +63,6 @@ class UserService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Ese correo ya existe, intenta con otro."
             )
-
-    @staticmethod
-    def crear_usuario(db: Session, user_in: UserCreate) -> User:
-        """Crea un nuevo usuario en la base de datos."""
-        UserService.verificar_email_duplicado(db, user_in.email)
-        nuevo = User(**user_in.model_dump())
-        db.add(nuevo)
-        db.commit()
-        db.refresh(nuevo)
-        return nuevo
 
     @staticmethod
     def actualizar_completo(db: Session, user_id: int, datos: UserUpdate) -> User:

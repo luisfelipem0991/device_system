@@ -1,121 +1,188 @@
-# device_systems — Evidencias v4.0
-### Migraciones con Alembic, Relaciones entre Modelos y Consultas Avanzadas
+# device_systems — Evidencias v5.0
+### Seguridad, Autenticación OAuth2/JWT, Middleware, CORS y Rate Limiting
 
-Este documento contiene la evidencia de la implementación de Alembic, las relaciones entre `User`, `Device` y `Loan`, y las consultas con joins y filtros sobre la API **device_systems**.
+Este documento contiene la evidencia funcional de la capa de seguridad implementada sobre **device_systems**: autenticación con OAuth2 y JWT, hash de contraseñas con passlib, autorización por roles, middleware personalizado, configuración de CORS y rate limiting con slowapi.
 
 ---
 
-## 1. Inicialización de Alembic
+## 1. Registro de usuario
 
-```bash
-alembic init alembic
+Prueba de `POST /auth/register` con datos válidos: nombre, correo, contraseña segura y rol. La contraseña se valida con Pydantic v2 (`field_validator`) y se almacena únicamente como hash con bcrypt, nunca en texto plano.
+
+![Registro de usuario](images/Security/01.png)
+
+**Resultado esperado:** `201 Created`, con el usuario creado sin exponer `hashed_password`.
+
+---
+
+## 2. Registro con contraseña débil
+
+Intento de registro con una contraseña que no cumple las reglas mínimas (por ejemplo, sin mayúscula). El `field_validator` del schema `UserRegister` rechaza la petición antes de que llegue a la base de datos.
+
+![Registro con contraseña débil](images/Security/02.png)
+
+**Resultado esperado:** `422 Unprocessable Entity`, con el detalle de la regla incumplida (mayúscula, minúscula, número o espacios).
+
+---
+
+## 3. Registro con email duplicado
+
+Intento de registrar un segundo usuario con un correo que ya existe en la base de datos.
+
+![Registro con email duplicado](images/Security/03.png)
+
+**Resultado esperado:** `400 Bad Request`, con el mensaje `"Ese correo ya está registrado."`
+
+---
+
+## 4. Login correcto
+
+Autenticación exitosa mediante `POST /auth/login` con credenciales válidas. La API verifica la contraseña contra el hash almacenado y genera un token JWT firmado.
+
+![Login correcto](images/Security/04.png)
+
+**Resultado esperado:** `200 OK`, con `access_token` y `token_type: "bearer"`.
+
+---
+
+## 5. Login con contraseña incorrecta
+
+Intento de login con la contraseña equivocada para un correo existente.
+
+![Login con contraseña incorrecta](images/Security/05.png)
+
+**Resultado esperado:** `401 Unauthorized`, con el mensaje `"Correo o contraseña incorrectos."`
+
+---
+
+## 6. Consulta de /auth/me
+
+Consulta del perfil del usuario autenticado usando el token Bearer obtenido en el login.
+
+![Consulta de /auth/me](images/Security/06.png)
+
+**Resultado esperado:** `200 OK`, con los datos del usuario (`id`, `name`, `email`, `role`, `is_active`, `created_at`), sin incluir `hashed_password` en ningún momento.
+
+---
+
+## 7. Acceso a ruta protegida sin token
+
+Intento de consultar `GET /users` sin enviar ninguna cabecera de autorización.
+
+![Acceso sin token](images/Security/07.png)
+
+**Resultado esperado:** `401 Unauthorized`.
+
+---
+
+## 8. Acceso con token inválido
+
+Intento de consultar una ruta protegida enviando un token JWT mal formado o alterado.
+
+![Acceso con token inválido](images/Security/08.png)
+
+**Resultado esperado:** `401 Unauthorized`, con el mensaje `"No se pudo validar las credenciales."`
+
+---
+
+## 9. Acceso con usuario sin permisos
+
+Un usuario autenticado con rol `user` intenta ejecutar una operación reservada para `admin` (por ejemplo, `DELETE /devices/{device_id}`).
+
+![Acceso con usuario sin permisos](images/Security/09.png)
+
+**Resultado esperado:** `403 Forbidden`, indicando los roles permitidos para esa operación.
+
+---
+
+## 10. Creación de dispositivo con rol permitido
+
+Un usuario con rol `admin` (o `support`) crea un nuevo dispositivo mediante `POST /devices`.
+
+![Creación de dispositivo con rol permitido](images/Security/10.png)
+
+**Resultado esperado:** `201 Created`, con el dispositivo registrado.
+
+---
+
+## 11. Eliminación de dispositivo con rol no permitido
+
+Un usuario con rol `user` intenta eliminar el dispositivo creado en el paso anterior.
+
+![Eliminación con rol no permitido](images/Security/11.png)
+
+**Resultado esperado:** `403 Forbidden`.
+
+---
+
+## 12. Configuración CORS
+
+Verificación de la configuración de CORS, mostrando los orígenes permitidos (`http://localhost:5173` y `http://localhost:3000`) configurados en `CORSMiddleware`, junto con `allow_credentials=True`, `allow_methods=["*"]` y `allow_headers=["*"]`.
+
+![Configuración CORS](images/Security/12.png)
+
+**Resultado esperado:** Las peticiones desde los orígenes autorizados incluyen las cabeceras `Access-Control-Allow-Origin` y `Access-Control-Allow-Credentials` en la respuesta.
+
+---
+
+## 13. Cabeceras generadas por middleware
+
+Inspección de las cabeceras de respuesta generadas por el middleware personalizado `RequestTracingMiddleware` en cualquier petición.
+
+![Cabeceras de middleware](images/Security/13.png)
+
+**Resultado esperado:** Presencia de las cabeceras:
+```
+X-App-Name: device_systems
+X-Process-Time: 0.0xxx
+X-Request-ID: xxxxxxxx
 ```
 
-Este comando crea la estructura base de Alembic: la carpeta `alembic/versions/` (donde se guardan las migraciones), el archivo `env.py` (que conecta Alembic con los modelos de SQLAlchemy) y `alembic.ini` (configuración general, incluida la URL de la base de datos).
+---
 
-![Ejecución de alembic init](images/Alembic/01.png)
+## 14. Activación de rate limiting
+
+Envío repetido de peticiones a `POST /auth/login` (más de 5 en un minuto) para forzar el límite configurado con slowapi.
+
+![Activación de rate limiting](images/Security/14.png)
+
+**Resultado esperado:** Las primeras 5 peticiones se procesan normalmente; a partir de la 6.ª, la API responde `429 Too Many Requests`.
 
 ---
 
-## 2. Creación de migración con autogenerate
+## 15. Verificación de Swagger/OpenAPI
 
-```bash
-alembic revision --autogenerate -m "create devices and loans tables"
-```
+Vista general de la documentación interactiva en `/docs`, mostrando los endpoints organizados por los tags `Auth`, `Users`, `Devices`, `Loans` y `Security`, con el esquema de seguridad OAuth2 visible y el botón "Authorize" funcional.
 
-Alembic compara los modelos definidos en `app/models/` contra el estado actual de la base de datos y genera automáticamente el script de migración con las tablas e índices nuevos detectados.
+![Verificación de Swagger](images/Security/15.png)
 
-![Migración generada con autogenerate](images/Alembic/02.png)
+**Resultado esperado:** Todos los endpoints protegidos muestran el ícono de candado, y el esquema `OAuth2PasswordBearer` aparece correctamente definido en la especificación OpenAPI.
 
 ---
 
-## 3. Aplicación de la migración
+## Resumen de mecanismos de seguridad implementados
 
-```bash
-alembic upgrade head
-```
+| Mecanismo | Herramienta | Ubicación en el código |
+|---|---|---|
+| Hash de contraseñas | passlib (bcrypt) | `app/auth/security.py` |
+| Autenticación | OAuth2 + JWT (python-jose) | `app/auth/auth_routes.py`, `app/auth/security.py` |
+| Autorización por rol | Dependencias de FastAPI | `app/dependencies/auth_dependency.py` |
+| Validación avanzada | Pydantic v2 (`field_validator`, `ConfigDict`) | `app/schemas/auth_schema.py` |
+| CORS | `CORSMiddleware` | `app/main.py` |
+| Trazabilidad | Middleware personalizado | `app/middlewares/request_middleware.py` |
+| Rate limiting | slowapi | `app/middlewares/rate_limiter.py`, rutas decoradas |
+| Migraciones | Alembic | `alembic/versions/` |
 
-Este comando ejecuta el script de migración generado y lleva la base de datos hasta la última versión (`head`).
+### ¿Por qué no se debe usar `allow_origins=["*"]` junto con `allow_credentials=True`?
 
-![Aplicación de migración con upgrade head](images/Alembic/03.png)
-
----
-
-## 4. Estructura de tablas generadas
-
-Verificación de las tablas creadas en `device_systems.db` y de las columnas del modelo `loans`, donde se observan las llaves foráneas `user_id` y `device_id`.
-
-![Estructura de tablas generadas](images/Alembic/04.png)
-
----
-
-## 5. Swagger UI — Vista general
-
-Documentación automática de FastAPI organizada en tres tags: `Users`, `Devices` y `Loans`.
-
-![Swagger UI - vista general](images/Alembic/05.png)
-
----
-
-## 6. Swagger UI — Endpoints de Loans
-
-Detalle de los endpoints `POST /loans/`, `GET /loans/details` y `PATCH /loans/{loan_id}/return`.
-
-![Swagger UI - endpoints de préstamos](images/Alembic/06.png)
-
----
-
-## 7. Evidencia de creación de usuario, dispositivo y préstamo
-
-Creación exitosa de un usuario (`POST /users/`), un dispositivo (`POST /devices/`) y un préstamo que los relaciona (`POST /loans/`), todos con respuesta `201 Created`.
-
-![Creación de usuario, dispositivo y préstamo](images/Alembic/07.png)
-
----
-
-## 8. Evidencia de consultas con joins
-
-Resultado de `GET /loans/details`, que combina información de las tablas `loans`, `users` y `devices` mediante `join()`, mostrando los datos del usuario y del dispositivo anidados dentro de cada préstamo.
-
-![Consulta con join](images/Alembic/08.png)
-
----
-
-## 9. Evidencia de filtros aplicados
-
-Resultados de los filtros avanzados:
-- `GET /loans/?status=active`
-- `GET /loans/details?device_type=laptop`
-- `GET /users/1/loans`
-
-![Filtros aplicados](images/Alembic/09.png)
-
----
-
-## 10. Evidencia de devolución de dispositivo
-
-Ejecución de `PATCH /loans/1/return`, que marca el préstamo como `returned`, asigna `return_date` y libera el dispositivo (`is_available: true`).
-
-![Devolución de dispositivo](images/Alembic/10.png)
-
----
-
-## 11. Verificación final del dispositivo disponible
-
-Confirmación con `GET /devices/1` de que el dispositivo volvió a estar disponible tras la devolución.
-
-![Dispositivo disponible tras devolución](images/Alembic/11.png)
+Cuando una API permite credenciales (cookies, cabeceras de autorización con tokens) en peticiones cross-origin, el origen debe estar explícitamente autorizado. Si se usara `"*"` como origen permitido junto con `allow_credentials=True`, cualquier sitio web —incluso uno malicioso— podría enviar peticiones autenticadas en nombre del usuario que tenga la pestaña abierta, ya que el navegador adjuntaría las credenciales sin restricción de origen. Por esa razón, los navegadores modernos bloquean directamente esa combinación, y en `device_systems` se usa una lista blanca explícita (`CORS_ORIGINS` en `.env`) con los dominios reales del frontend autorizado.
 
 ---
 
 ## Reflexión
 
-Implementar Alembic, las relaciones entre modelos y las consultas con joins cambió por completo la forma en que entiendo una API REST conectada a una base de datos real.
+Esta fase transformó `device_systems` de una API funcional a una API **seguible y consumible por un frontend real**. Implementar OAuth2 con JWT obligó a pensar en el ciclo de vida completo de una sesión: cómo se emite un token, qué información lleva, cuánto dura, y cómo se valida en cada petición sin necesidad de mantener estado en el servidor.
 
-**Sobre las migraciones:** antes, cualquier cambio en un modelo significaba borrar la base de datos y empezar de cero. Con Alembic, cada cambio estructural queda registrado como una migración versionada, lo que permite aplicar cambios de forma controlada, revertirlos si algo falla, y mantener sincronizada la base de datos entre distintos entornos o compañeros de equipo sin perder información.
+El hash de contraseñas con bcrypt reforzó la idea de que ninguna credencial sensible debe ser reversible ni visible, ni siquiera para quien administra la base de datos. La autorización por roles, implementada como dependencias reutilizables de FastAPI, permitió aplicar reglas de negocio de forma declarativa directamente en la firma de cada endpoint, sin duplicar lógica de validación.
 
-**Sobre las relaciones:** entender `ForeignKey()` y `relationship()` me hizo ver que un modelo de datos relacional no es solo un conjunto de tablas aisladas, sino una red de dependencias con sentido de negocio real. Un préstamo no existe sin un usuario y sin un dispositivo; esa regla ahora vive en la propia estructura de la base de datos, no solo en el código de la API.
-
-**Sobre las consultas avanzadas:** los joins me permitieron dejar de pensar en "una tabla a la vez" y empezar a construir respuestas que combinan información de varias fuentes en una sola consulta eficiente, en lugar de hacer múltiples llamadas separadas y unir los datos manualmente en Python.
-
-En conjunto, esta actividad me mostró cómo se construye un backend más cercano a un sistema real de producción: con historial de cambios, integridad referencial y consultas que reflejan relaciones reales entre los datos.
+El middleware personalizado y el rate limiting, aunque no afectan la lógica de negocio, son los mecanismos que en la práctica protegen una API expuesta en producción: trazabilidad para depurar incidentes, y límites de peticiones para prevenir abuso o ataques de fuerza bruta sobre el login.
